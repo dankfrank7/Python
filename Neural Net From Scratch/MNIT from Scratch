@@ -1,0 +1,177 @@
+import numpy as np
+import pandas as pd
+from matplotlib import pyplot as plt
+
+# Collect data
+data = pd.read_csv('train.csv') # 42,000 x 785 
+data = np.array(data)
+m, n = data.shape
+
+# Shuffle data
+np.random.shuffle(data)
+
+# Test data is the furst 1000 rows
+data_dev = data[0:1000].T   # (785, 1000)
+Y_dev = data_dev[0]         # (1000,)
+X_dev = data_dev[1:n]       # (784, 1000)
+X_dev = X_dev / 255.        # Normalise
+
+data_train = data[1000:m].T # (785, 41000)
+Y_train = data_train[0]     # (41000,)
+X_train = data_train[1:n]   # (784, 41000)
+X_train = X_train / 255.    # Normalise
+
+
+
+def init_params():
+    '''Initialise randomised weights and biases'''
+
+    W1 = np.random.rand(10, 784) - 0.5   # Values should be between -0.5 to +0.5
+    b1 = np.random.rand(10, 1) - 0.5
+    W2 = np.random.rand(10, 10) - 0.5
+    b2 = np.random.rand(10, 1) - 0.5
+
+    return W1, b1, W2, b2
+
+def ReLU(Z):
+    '''ReLU activation function'''
+
+    return np.maximum(0,Z)
+
+def softmax(Z):
+    '''Softmax activation function'''
+
+    return np.exp(Z) / np.sum(np.exp(Z), 0)   # Collapses rows (columnwise summation)
+
+def forward_prop(W1, b1, W2, b2, X):
+    '''Propagate forward through network'''
+
+    # Layer 1
+    Z1 = W1.dot(X) + b1
+    A1 = ReLU(Z1)       # ReLu activation function               
+
+    # Layer 2 
+    Z2 = W2.dot(A1) + b2
+    A2 = softmax(Z2)    # Softmax activation function
+
+    return Z1, A1, Z2, A2
+
+def one_hot(Y):
+    '''Encodes Y predictions into matrix indicies returns 10 x m'''
+
+    one_hot_Y = np.zeros((Y.size, Y.max() + 1))
+    one_hot_Y[np.arange(Y.size), Y] = 1
+    one_hot_Y = one_hot_Y.T
+    return one_hot_Y
+
+def deriv_ReLU(Z):
+    '''Calcualte the derivative of the ReLU activation function'''
+
+    return Z > 0
+
+def back_prop(Z1, A1, Z2, A2, W2, X, Y):
+    '''Propagate backwards through network'''
+
+    m = Y.size
+
+    # Encode Y predictions into one_hot_Y matrix
+    one_hot_Y = one_hot(Y)
+
+    # Layer 2
+    dZ2 = A2 - one_hot_Y
+    dW2 = 1 / m * dZ2.dot(A1.T)
+    db2 = 1 / m * np.sum(dZ2) # Sum along the columns
+
+    # Layer 1
+    dZ1 = W2.T.dot(dZ2) * deriv_ReLU(Z1)
+    dW1 = 1 / m * dZ1.dot(X.T)
+    db1 = 1 / m * np.sum(dZ1) # Sum along the columns
+
+    return dW1, db1, dW2, db2
+
+def update_params(W1, b1, W2, b2, dW1, db1, dW2, db2, alpha):
+    '''Update paramaters based on delta'''
+
+    W1 = W1 - alpha * dW1 
+    b1 = b1 - alpha * db1
+    W2 = W2 - alpha * dW2
+    b2 = b2 - alpha * db2
+    return W1, b1, W2, b2
+
+def get_predictions(A2):
+    '''Find the maximum prediction from A2 matrix'''
+
+    return np.argmax(A2,0)
+
+def get_accuracy(predictions, Y):
+    '''Calculate accuracy of predictions'''
+
+    #print(predictions, Y)
+    return np.sum(predictions == Y) / Y.size
+
+
+def gradient_descent(X, Y, iterations, alpha):
+    '''Optimisation function for training network weights'''
+
+    W1, b1, W2, b2 = init_params()
+
+    acc_vec = []
+    
+    # Main program loop 
+    for i in range(iterations):
+        Z1, A1, Z2, A2 = forward_prop(W1, b1, W2, b2, X)
+        dW1, db1, dW2, db2 = back_prop(Z1, A1, Z2, A2, W2, X, Y)
+        W1, b1, W2, b2 = update_params(W1, b1, W2, b2, dW1, db1, dW2, db2, alpha)
+
+        accuracy = get_accuracy(get_predictions(A2), Y)
+        acc_vec.append(accuracy)
+
+        if i % 10 == 0:
+            print("Iteration: ",i)
+
+            print("Accuracy: ", round(accuracy*100,2))
+
+    return W1, b1, W2, b2, acc_vec
+
+def make_predictions(X, W1, b1, W2, b2):
+    '''Based on a defined set of weights, make predictions'''
+    _, _, _, A2 = forward_prop(W1, b1, W2, b2, X)
+    predictions = get_predictions(A2)
+    return predictions
+
+def test_prediction(index, W1, b1, W2, b2):
+    '''For a single index, make prediction and show image'''
+
+    prediction = make_predictions(X_train[:, index, None], W1, b1, W2, b2)
+    label = Y_train[index]
+    print('Prediction: ', prediction)
+    print('Label: ', label)
+
+    current_image = X_train[:, index, None]
+    current_image = current_image.reshape((28, 28)) * 255 
+    plt.gray()
+    plt.imshow(current_image, interpolation = 'nearest')
+    plt.show()
+
+# Run function
+iterations = 300
+alpha_vec = [0.2]
+accuracy_vectors = {}
+
+for alpha in alpha_vec: 
+    W1, b1, W2, b2, acc_vec = gradient_descent(X_train, Y_train, iterations, alpha)
+    accuracy_vectors[alpha] = acc_vec
+
+
+
+
+# Plotting
+#plt.figure(figsize=(10, 6))
+#for alpha, acc_vec in accuracy_vectors.items():
+#    plt.plot(range(iterations), acc_vec, label=f'Alpha = {alpha}')
+
+#plt.xlabel('Iterations')
+#plt.ylabel('Accuracy')
+#plt.title('Accuracy over Iterations for Different Learning Rates')
+#plt.legend()
+#plt.show()
